@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>記帳表單</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #fffde7; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+    .header { background: #ffb300; color: white; width: 100%; max-width: 480px; padding: 16px; border-radius: 12px 12px 0 0; text-align: center; font-size: 18px; font-weight: bold; }
+    .tab { display: flex; width: 100%; max-width: 480px; }
+    .tab button { flex: 1; padding: 12px; border: none; cursor: pointer; font-size: 16px; font-weight: bold; }
+    .tab .expense { background: #ff5252; color: white; }
+    .tab .income { background: #e0e0e0; color: #333; }
+    .tab.income-mode .expense { background: #e0e0e0; color: #333; }
+    .tab.income-mode .income { background: #69f0ae; color: #333; }
+    .form { background: #fffff0; width: 100%; max-width: 480px; padding: 20px; border-radius: 0 0 12px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .date-row { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 15px; color: #555; }
+    .date-row input { border: none; border-bottom: 1px solid #ccc; background: transparent; font-size: 15px; padding: 4px; }
+    label { display: block; margin-bottom: 6px; color: #888; font-size: 14px; }
+    input[type=text], input[type=number] { width: 100%; border: none; border-bottom: 2px solid #eee; padding: 10px 0; font-size: 16px; background: transparent; outline: none; margin-bottom: 20px; }
+    input[type=text]:focus, input[type=number]:focus { border-bottom-color: #ffb300; }
+    .amount-row { display: flex; align-items: center; gap: 8px; }
+    .amount-row span { font-size: 20px; color: #555; }
+    .submit-btn { width: 100%; padding: 14px; background: #ffb300; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    .submit-btn:active { background: #ff8f00; }
+    .success { color: #00c853; text-align: center; font-size: 16px; margin-top: 16px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="header">💰 記帳表單</div>
+  <div class="tab" id="tabBar">
+    <button class="expense" onclick="setType('支出')">支出</button>
+    <button class="income" onclick="setType('收入')">收入</button>
+  </div>
+  <div class="form">
+    <div class="date-row">
+      📅 <input type="date" id="dateInput">
+    </div>
+    <label>說明</label>
+    <input type="text" id="itemInput" placeholder="請輸入項目名稱">
+    <label>金額</label>
+    <div class="amount-row">
+      <span>$</span>
+      <input type="number" id="amountInput" placeholder="0" min="0">
+    </div>
+    <label>備註（選填）</label>
+    <input type="text" id="noteInput" placeholder="可不填">
+    <button class="submit-btn" onclick="submit()">送出記帳</button>
+    <div class="success" id="successMsg">✅ 記帳成功！視窗將自動關閉</div>
+  </div>
+
+  <script>
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycby4yN16K8Bfst5wcF_lrg4Mtyx76rX-ccvr1uh3gDXTbuU2G3tKAPCOnqZQpplzmVFUXw/exec';
+    let currentType = '支出';
+    let userName = '成員';
+    let groupId = null;
+
+    // 設定今天日期
+    const today = new Date();
+    document.getElementById('dateInput').value = today.toISOString().split('T')[0];
+
+    async function initLiff() {
+      await liff.init({ liffId: '2010018644-6xUQ1NxD' });
+      if (liff.isLoggedIn()) {
+        const profile = await liff.getProfile();
+        userName = profile.displayName;
+      } else {
+        liff.login();
+      }
+      // 取得群組資訊
+      const context = liff.getContext();
+      if (context && context.groupId) groupId = context.groupId;
+    }
+
+    function setType(type) {
+      currentType = type;
+      const tabBar = document.getElementById('tabBar');
+      tabBar.className = type === '收入' ? 'tab income-mode' : 'tab';
+    }
+
+    async function submit() {
+      const date = document.getElementById('dateInput').value.replace(/-/g, '/');
+      const item = document.getElementById('itemInput').value.trim();
+      const amount = document.getElementById('amountInput').value;
+      const note = document.getElementById('noteInput').value.trim();
+
+      if (!item || !amount || amount <= 0) {
+        alert('請填寫說明和金額！');
+        return;
+      }
+
+      const now = new Date();
+      const timeStr = now.toTimeString().slice(0, 8);
+      const dateStr = date + ' ' + timeStr;
+
+      const params = new URLSearchParams({
+        action: 'group',
+        groupId: groupId || '',
+        userName: userName,
+        type: currentType,
+        date: dateStr,
+        item: item,
+        amount: amount,
+        note: note
+      });
+
+      try {
+        await fetch(GAS_URL + '?' + params.toString());
+        document.getElementById('successMsg').style.display = 'block';
+        setTimeout(() => liff.closeWindow(), 1500);
+      } catch(e) {
+        alert('送出失敗，請重試');
+      }
+    }
+
+    initLiff();
+  </script>
+</body>
+</html>
