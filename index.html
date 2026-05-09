@@ -25,6 +25,7 @@
     .amount-row span { font-size: 20px; color: #555; }
     .submit-btn { width: 100%; padding: 14px; background: #ffb300; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
     .submit-btn:active { background: #ff8f00; }
+    .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
     .success { color: #00c853; text-align: center; font-size: 16px; margin-top: 16px; display: none; }
   </style>
 </head>
@@ -47,9 +48,11 @@
     </div>
     <label>備註（選填）</label>
     <input type="text" id="noteInput" placeholder="可不填">
-    <button class="submit-btn" onclick="submit()">送出記帳</button>
+    <button class="submit-btn" id="submitBtn" onclick="submit()">送出記帳</button>
     <div class="success" id="successMsg">✅ 記帳成功！視窗將自動關閉</div>
   </div>
+
+  <iframe name="hidden_iframe" style="display:none"></iframe>
 
   <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycby4yN16K8Bfst5wcF_lrg4Mtyx76rX-ccvr1uh3gDXTbuU2G3tKAPCOnqZQpplzmVFUXw/exec';
@@ -57,62 +60,88 @@
     let userName = '成員';
     let groupId = null;
 
-    // 設定今天日期
     const today = new Date();
-    document.getElementById('dateInput').value = today.toISOString().split('T')[0];
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    document.getElementById('dateInput').value = `${yyyy}-${mm}-${dd}`;
 
     async function initLiff() {
-      await liff.init({ liffId: '2010018644-6xUQ1NxD' });
-      if (liff.isLoggedIn()) {
+      try {
+        await liff.init({ liffId: '2010018644-6xUQ1NxD' });
+        if (!liff.isLoggedIn()) { liff.login(); return; }
         const profile = await liff.getProfile();
         userName = profile.displayName;
-      } else {
-        liff.login();
+        const context = liff.getContext();
+        if (context && context.groupId) groupId = context.groupId;
+      } catch(e) {
+        console.log('LIFF init error:', e);
       }
-      // 取得群組資訊
-      const context = liff.getContext();
-      if (context && context.groupId) groupId = context.groupId;
     }
 
     function setType(type) {
       currentType = type;
-      const tabBar = document.getElementById('tabBar');
-      tabBar.className = type === '收入' ? 'tab income-mode' : 'tab';
+      document.getElementById('tabBar').className = type === '收入' ? 'tab income-mode' : 'tab';
     }
 
-    async function submit() {
-      const date = document.getElementById('dateInput').value.replace(/-/g, '/');
+    function submit() {
+      const dateVal = document.getElementById('dateInput').value;
       const item = document.getElementById('itemInput').value.trim();
       const amount = document.getElementById('amountInput').value;
       const note = document.getElementById('noteInput').value.trim();
 
-      if (!item || !amount || amount <= 0) {
+      if (!item || !amount || Number(amount) <= 0) {
         alert('請填寫說明和金額！');
+        return;
+      }
+
+      if (!groupId) {
+        alert('無法取得群組資訊，請從群組中開啟此表單');
         return;
       }
 
       const now = new Date();
       const timeStr = now.toTimeString().slice(0, 8);
-      const dateStr = date + ' ' + timeStr;
+      const dateStr = dateVal.replace(/-/g, '-') + ' ' + timeStr;
 
-      const params = new URLSearchParams({
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = '送出中...';
+
+      const form = document.createElement('form');
+      form.method = 'GET';
+      form.action = GAS_URL;
+      form.target = 'hidden_iframe';
+
+      const fields = {
         action: 'group',
-        groupId: groupId || '',
+        groupId: groupId,
         userName: userName,
         type: currentType,
         date: dateStr,
         item: item,
         amount: amount,
         note: note
-      });
+      };
 
-      try {
-        await fetch(GAS_URL + '?' + params.toString());
-        document.getElementById('successMsg').style.display = 'block';
-        setTimeout(() => liff.closeWindow(), 1500);
-      } catch(e) {
-        alert('送出失敗，請重試');
+      for (const [k, v] of Object.entries(fields)) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = k;
+        input.value = v;
+        form.appendChild(input);
       }
+
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+
+      document.getElementById('successMsg').style.display = 'block';
+      btn.textContent = '已送出！';
+
+      setTimeout(() => {
+        if (liff.isInClient()) liff.closeWindow();
+      }, 1500);
     }
 
     initLiff();
