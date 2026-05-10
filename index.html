@@ -27,6 +27,7 @@
     .submit-btn:active { background: #ff8f00; }
     .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
     .success { color: #00c853; text-align: center; font-size: 16px; margin-top: 16px; display: none; }
+    iframe { display: none; }
   </style>
 </head>
 <body>
@@ -48,34 +49,47 @@
     </div>
     <label>備註（選填）</label>
     <input type="text" id="noteInput" placeholder="可不填">
-    <button class="submit-btn" id="submitBtn" onclick="submit()">送出記帳</button>
+    <button class="submit-btn" id="submitBtn" onclick="submitForm()">送出記帳</button>
     <div class="success" id="successMsg">✅ 記帳成功！視窗將自動關閉</div>
   </div>
-
-  <iframe name="hidden_iframe" style="display:none"></iframe>
+  <iframe id="hiddenFrame" name="hiddenFrame"></iframe>
 
   <script>
     const GAS_URL = 'https://script.google.com/macros/s/AKfycby4yN16K8Bfst5wcF_lrg4Mtyx76rX-ccvr1uh3gDXTbuU2G3tKAPCOnqZQpplzmVFUXw/exec';
     let currentType = '支出';
     let userName = '成員';
     let groupId = null;
+    let liffReady = false;
 
     const today = new Date();
     const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth()+1).padStart(2,'0');
+    const dd = String(today.getDate()).padStart(2,'0');
     document.getElementById('dateInput').value = `${yyyy}-${mm}-${dd}`;
 
     async function initLiff() {
       try {
         await liff.init({ liffId: '2010018644-6xUQ1NxD' });
-        if (!liff.isLoggedIn()) { liff.login(); return; }
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
         const profile = await liff.getProfile();
         userName = profile.displayName;
+
         const context = liff.getContext();
-        if (context && context.groupId) groupId = context.groupId;
+        console.log('context:', JSON.stringify(context));
+
+        if (context) {
+          if (context.groupId) groupId = context.groupId;
+          else if (context.roomId) groupId = context.roomId;
+        }
+
+        liffReady = true;
+        console.log('groupId:', groupId, 'userName:', userName);
       } catch(e) {
         console.log('LIFF init error:', e);
+        liffReady = true;
       }
     }
 
@@ -84,7 +98,7 @@
       document.getElementById('tabBar').className = type === '收入' ? 'tab income-mode' : 'tab';
     }
 
-    function submit() {
+    function submitForm() {
       const dateVal = document.getElementById('dateInput').value;
       const item = document.getElementById('itemInput').value.trim();
       const amount = document.getElementById('amountInput').value;
@@ -95,14 +109,9 @@
         return;
       }
 
-      if (!groupId) {
-        alert('無法取得群組資訊，請從群組中開啟此表單');
-        return;
-      }
-
       const now = new Date();
-      const timeStr = now.toTimeString().slice(0, 8);
-      const dateStr = dateVal.replace(/-/g, '-') + ' ' + timeStr;
+      const timeStr = now.toTimeString().slice(0,8);
+      const dateStr = dateVal + ' ' + timeStr;
 
       const btn = document.getElementById('submitBtn');
       btn.disabled = true;
@@ -111,11 +120,11 @@
       const form = document.createElement('form');
       form.method = 'GET';
       form.action = GAS_URL;
-      form.target = 'hidden_iframe';
+      form.target = 'hiddenFrame';
 
-      const fields = {
+      const params = {
         action: 'group',
-        groupId: groupId,
+        groupId: groupId || 'unknown',
         userName: userName,
         type: currentType,
         date: dateStr,
@@ -124,7 +133,7 @@
         note: note
       };
 
-      for (const [k, v] of Object.entries(fields)) {
+      for (const [k, v] of Object.entries(params)) {
         const input = document.createElement('input');
         input.type = 'hidden';
         input.name = k;
@@ -136,11 +145,12 @@
       form.submit();
       document.body.removeChild(form);
 
-      document.getElementById('successMsg').style.display = 'block';
-      btn.textContent = '已送出！';
-
       setTimeout(() => {
-        if (liff.isInClient()) liff.closeWindow();
+        document.getElementById('successMsg').style.display = 'block';
+        btn.style.display = 'none';
+        setTimeout(() => {
+          try { if (liff.isInClient()) liff.closeWindow(); } catch(e) {}
+        }, 1500);
       }, 1500);
     }
 
