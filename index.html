@@ -24,7 +24,6 @@
     .amount-row { display: flex; align-items: center; gap: 8px; }
     .amount-row span { font-size: 20px; color: #555; }
     .submit-btn { width: 100%; padding: 14px; background: #ffb300; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-    .submit-btn:active { background: #ff8f00; }
     .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
     .success { color: #00c853; text-align: center; font-size: 16px; margin-top: 16px; display: none; }
     iframe { display: none; }
@@ -59,7 +58,11 @@
     let currentType = '支出';
     let userName = '成員';
     let groupId = null;
-    let liffReady = false;
+
+    // 先從網址參數取得 groupId 和 userName
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('groupId')) groupId = urlParams.get('groupId');
+    if (urlParams.get('userName')) userName = decodeURIComponent(urlParams.get('userName'));
 
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -70,26 +73,17 @@
     async function initLiff() {
       try {
         await liff.init({ liffId: '2010018644-6xUQ1NxD' });
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
+        if (!liff.isLoggedIn()) { liff.login(); return; }
         const profile = await liff.getProfile();
-        userName = profile.displayName;
-
-        const context = liff.getContext();
-        console.log('context:', JSON.stringify(context));
-
-        if (context) {
-          if (context.groupId) groupId = context.groupId;
-          else if (context.roomId) groupId = context.roomId;
+        // 如果網址沒帶 userName，用 LIFF 取得的
+        if (!urlParams.get('userName')) userName = profile.displayName;
+        // 如果網址沒帶 groupId，嘗試從 context 取得
+        if (!groupId) {
+          const context = liff.getContext();
+          if (context && context.groupId) groupId = context.groupId;
         }
-
-        liffReady = true;
-        console.log('groupId:', groupId, 'userName:', userName);
       } catch(e) {
         console.log('LIFF init error:', e);
-        liffReady = true;
       }
     }
 
